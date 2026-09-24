@@ -1,0 +1,70 @@
+name: Deploy Abed Codelab to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build static site
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p _site/codelab/vendor/pyodide
+
+          cp index.html _site/
+          cp .nojekyll _site/
+          cp notebook.ipynb _site/
+          cp -R codelab/. _site/codelab/
+
+          PYODIDE_BASE="https://cdn.jsdelivr.net/pyodide/v314.0.7/full"
+
+          files=(
+            "pyodide.js"
+            "pyodide.mjs"
+            "pyodide.asm.mjs"
+            "pyodide.asm.wasm"
+            "pyodide-lock.json"
+            "python_stdlib.zip"
+          )
+
+          for file in "${files[@]}"; do
+            echo "Downloading ${file}"
+            curl --fail --location --retry 3               "${PYODIDE_BASE}/${file}"               --output "_site/codelab/vendor/pyodide/${file}"
+          done
+
+          echo "Pyodide files in artifact:"
+          ls -lh _site/codelab/vendor/pyodide/
+
+      - name: Upload static site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
